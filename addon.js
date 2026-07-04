@@ -346,14 +346,14 @@ builder.defineStreamHandler(async ({ id }) => {
         const html  = await fetchHTML(epUrl);
         const $     = cheerio.load(html);
 
-        let iframeSrc = null;
-        $('iframe[src]').each((_, el) => {
-            if (iframeSrc) return;
-            const src = $(el).attr('src') || '';
-            if (VIDEO_HOSTS.some(h => src.includes(h))) {
-                iframeSrc = src.startsWith('http') ? src : `${BASE_URL}${src}`;
-            }
-        });
+    let iframeSrc = null;
+    $('iframe[src]').each((_, el) => {
+    if (iframeSrc) return;
+    const src = $(el).attr('src') || '';
+    if (src) {
+        iframeSrc = src.startsWith('http') ? src : `${BASE_URL}${src}`;
+       }
+  });
 
         if (!iframeSrc) {
             console.warn('[STREAM] No se encontro iframe en:', epUrl);
