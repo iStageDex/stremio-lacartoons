@@ -324,7 +324,7 @@ builder.defineMetaHandler(async ({ id }) => {
 });
 
 // ==================== 3. STREAM ====================
-builder.defineStreamHandler(async ({ id }) => {
+builder.defineStreamHandler(async ({ id }) => { // UPDATED
   const m = id.match(/^lacart_(\d+):(\d+):(\d+)$/);
   if (!m) return { streams: [] };
 
