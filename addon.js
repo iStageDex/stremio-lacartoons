@@ -325,7 +325,6 @@ builder.defineMetaHandler(async ({ id }) => {
 
 // ==================== 3. STREAM ====================
 builder.defineStreamHandler(async ({ id }) => {
-  // Formato esperado: lacart_{numId}:{temporada}:{episodio}
   const m = id.match(/^lacart_(\d+):(\d+):(\d+)$/);
   if (!m) return { streams: [] };
 
@@ -343,36 +342,48 @@ builder.defineStreamHandler(async ({ id }) => {
     }
 
     const epUrl = match.epPath.startsWith('http') ? match.epPath : `${BASE_URL}${match.epPath}`;
-    const html = await fetchHTML(epUrl);
-    const $ = cheerio.load(html);
 
-    // ----------------------------Updated-------------------------------------
-    let iframeSrc = null;
-    $('iframe[src]').each((_, el) => {
-      if (iframeSrc) return;
-      const src = $(el).attr('src') || '';
-      if (src) {
-        iframeSrc = src.startsWith('http') ? src : `${BASE_URL}${src}`;
+    // La pagina del capitulo rota aleatoriamente el proveedor de video en
+    // cada carga (a veces ok.ru, a veces otro embed no soportado por yt-dlp).
+    // Reintentamos varias veces, SIN cache, hasta encontrar un proveedor
+    // que efectivamente devuelva streams.
+    const MAX_ATTEMPTS = 5;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const { data: html } = await HTTP.get(epUrl);
+        const $ = cheerio.load(html);
+
+        let iframeSrc = null;
+        $('iframe[src]').each((_, el) => {
+          if (iframeSrc) return;
+          const src = $(el).attr('src') || '';
+          if (src) iframeSrc = src.startsWith('http') ? src : `${BASE_URL}${src}`;
+        });
+
+        if (!iframeSrc) {
+          console.warn(`[STREAM] Intento ${attempt}/${MAX_ATTEMPTS}: no se encontro iframe en ${epUrl}`);
+          continue;
+        }
+
+        console.log(`[STREAM] Intento ${attempt}/${MAX_ATTEMPTS}: extrayendo URL de:`, iframeSrc);
+        const streams = await extractOkRuStreams(iframeSrc);
+
+        if (streams.length) {
+          console.log('[STREAM] Streams HLS:', streams.map(s => s.title).join(', '));
+          return { streams };
+        }
+
+        console.warn(`[STREAM] Intento ${attempt}/${MAX_ATTEMPTS}: yt-dlp no devolvio streams para`, iframeSrc);
+      } catch (innerErr) {
+        console.warn(`[STREAM] Intento ${attempt}/${MAX_ATTEMPTS} fallo:`, innerErr.message);
       }
-    });
 
-    //-----------------------------------------------------------------
-
-    if (!iframeSrc) {
-      console.warn('[STREAM] No se encontro iframe en:', epUrl);
-      return { streams: [] };
+      await new Promise(r => setTimeout(r, 600));
     }
 
-    console.log('[STREAM] Extrayendo URL de:', iframeSrc);
-
-    const streams = await extractOkRuStreams(iframeSrc);
-    if (!streams.length) {
-      console.warn('[STREAM] yt-dlp no devolvio streams HLS.');
-      return { streams: [] };
-    }
-
-    console.log('[STREAM] Streams HLS:', streams.map(s => s.title).join(', '));
-    return { streams };
+    console.error(`[STREAM] Se agotaron los intentos para S${season}E${episode} de la serie ${numId}`);
+    return { streams: [] };
   } catch (e) {
     console.error('[STREAM ERROR]', e.message);
     return { streams: [] };
