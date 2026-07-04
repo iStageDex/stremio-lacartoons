@@ -11,15 +11,10 @@ const express  = require('express');
 const addon    = require('stremio-addon-sdk');
 const axios    = require('axios');
 const cheerio  = require('cheerio');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const path     = require('path');
-
-const execAsync = promisify(exec);
+const ytDlp    = require('yt-dlp-exec');
 
 // ==================== Configuracion ====================
 const BASE_URL = 'https://lacartoons.com';
-const YT_DLP   = path.resolve(__dirname, 'yt-dlp.exe');
 const PORT     = 7000;
 
 // URL base del addon para reescribir playlists del proxy HLS.
@@ -45,13 +40,12 @@ function proxyUrl(targetUrl, kind) {
 
 /** Extrae streams HLS de ok.ru via yt-dlp (JSON) y los enruta por el proxy. */
 async function extractOkRuStreams(iframeSrc) {
-    const { stdout, stderr } = await execAsync(
-        `"${YT_DLP}" -J --no-playlist "${iframeSrc}"`,
-        { timeout: 30000 }
-    );
-    if (stderr) console.warn('[YT-DLP WARN]', stderr.slice(0, 200));
+    const output = await ytDlp(iframeSrc, {
+        dumpSingleJson: true,
+        noPlaylist: true,
+    });
 
-    const info = JSON.parse(stdout);
+    const info = typeof output === 'string' ? JSON.parse(output) : output;
     const seen = new Set();
 
     return (info.formats || [])
